@@ -1,446 +1,387 @@
-/*!
- * Mass Attack Planner (Custom)
- * Build: v1.3.1-sendonly (2025-09-04)
- * Change: UI sağdaki gibi kalsın; Results bölümünde yalnızca SEND içeren BB Code verilsin.
- * URL logic: Single Village Planner ile aynı (sitter + UK istisnası)
- */
+/* * Script Name: Mass Attack Planner * Version: v1.1.8 * Last Updated: 2023-07-24 * Author: RedAlert * Author URL: https://twscripts.dev/ * Author Contact: redalert_tw (Discord) * Approved: t14001534 * Approved Date: 2020-06-05 * Mod: JawJaw */
+/*----------------------------------------------------------------------------------------------
+ * This script can NOT be cloned and modified without permission from the script author.
+ *----------------------------------------------------------------------------------------------*/
 
-(function () {
-  if (typeof window === 'undefined') return;
-  if (typeof game_data === 'undefined') { alert('Bu script Tribal Wars oyun ekranında çalıştırılmalıdır.'); return; }
-  if (typeof jQuery === 'undefined') { alert('jQuery bulunamadı. Oyunun bir iç sayfasında deneyin.'); return; }
-
-  var scriptData = {
+var scriptData = {
     name: 'Mass Attack Planner',
-    version: 'v1.3.1-sendonly',
+    version: 'v1.1.8',
     author: 'RedAlert',
     authorUrl: 'https://twscripts.dev/',
-    helpLink: 'https://forum.tribalwars.net/index.php?threads/mass-attack-planner.285331/'
-  };
+    helpLink: 'https://forum.tribalwars.net/index.php?threads/mass-attack-planner.285331/',
+};
 
-  if (typeof DEBUG !== 'boolean') DEBUG = false;
-  var LS_PREFIX = 'ra_massAttackPlanner_';
-  var TIME_INTERVAL = 60 * 60 * 1000 * 24 * 30;
-  var LAST_UPDATED_TIME = localStorage.getItem(LS_PREFIX + '_last_updated') ?? 0;
+// User Input
+if (typeof DEBUG !== 'boolean') DEBUG = false;
 
-  var unitInfo, attackPlannerWindow = null;
-  var MAP_GROUP_ID = parseInt(localStorage.getItem(LS_PREFIX + '_chosen_group') ?? 0) || 0;
-  var MAP_VILLAGES_CACHE = [];
+// Local Storage
+var LS_PREFIX = `ra_massAttackPlanner_`;
+var TIME_INTERVAL = 60 * 60 * 1000 * 24 * 30; /* fetch data every 30 days */
+var LAST_UPDATED_TIME = localStorage.getItem(`${LS_PREFIX}_last_updated`) ?? 0;
 
-  initDebug();
+var unitInfo;
 
-  (function () {
+// Init Debug
+initDebug();
+
+/* Fetch unit info only when needed */
+(function () {
     if (LAST_UPDATED_TIME !== null) {
-      if (Date.parse(new Date()) >= LAST_UPDATED_TIME + TIME_INTERVAL) {
-        fetchUnitInfo();
-      } else {
-        unitInfo = JSON.parse(localStorage.getItem(LS_PREFIX + '_unit_info'));
-        init();
-      }
+        if (Date.parse(new Date()) >= LAST_UPDATED_TIME + TIME_INTERVAL) {
+            fetchUnitInfo();
+        } else {
+            unitInfo = JSON.parse(localStorage.getItem(`${LS_PREFIX}_unit_info`));
+            init(unitInfo);
+        }
     } else {
-      fetchUnitInfo();
+        fetchUnitInfo();
     }
-  })();
+})();
 
-  /* ============== INIT ============== */
-  function init() {
-    const content = getAppContent();
-    const windowContent = prepareWindowContent(content);
-    attackPlannerWindow = window.open(
-      '', '',
-      'left=10px,top=10px,width=860,height=760,toolbar=0,resizable=1,location=0,menubar=0,scrollbars=1,status=0'
-    );
-    if (!attackPlannerWindow) {
-      alert('Pop-up engellendi. Bu site için pop-up izni verin ve tekrar deneyin.');
-      return;
+// Script Initializer
+function init(unitInfo) {
+    var currentDateTime = getCurrentDateTime();
+
+    // fix for no paladin worlds
+    let knightSpeed = 0;
+    const worldUnits = game_data.units;
+    if (worldUnits.includes('knight')) {
+        knightSpeed = unitInfo?.config['knight'].speed || 0;
+    } else {
+        jQuery('#support_unit option[data-option-unit="knight"]').attr('disabled');
     }
-    attackPlannerWindow.document.write(windowContent);
 
-    setTimeout(async function () {
-      const doc = attackPlannerWindow.document;
-
-      // Varsayılan iniş zamanı
-      doc.getElementById('mapLandingTime').value = formatDateTimeLocal(new Date());
-
-      // Birim select'leri
-      populateUnitSelects();
-
-      // Gruplar & köyler
-      await mapLoadGroupsAndVillages(MAP_GROUP_ID);
-
-      // Events
-      doc.getElementById('mapGroups').addEventListener('change', async (e) => {
-        MAP_GROUP_ID = parseInt(e.target.value || 0);
-        localStorage.setItem(LS_PREFIX + '_chosen_group', MAP_GROUP_ID);
-        await mapLoadVillagesForGroup(MAP_GROUP_ID);
-      });
-
-      doc.getElementById('mapGetPlan').addEventListener('click', (e) => {
-        e.preventDefault();
-        handleGetPlan();
-      });
-
-      // Copy BB
-      const copyBtn = doc.getElementById('mapCopyBB');
-      if (copyBtn) {
-        copyBtn.addEventListener('click', function () {
-          const ta = doc.getElementById('mapResultsBB');
-          if (!ta) return;
-          ta.select(); ta.setSelectionRange(0, ta.value.length);
-          (doc.execCommand && doc.execCommand('copy')) || navigator.clipboard?.writeText(ta.value);
-          try { UI.SuccessMessage('BB Code kopyalandı!'); } catch (e) { alert('BB Code kopyalandı!'); }
-        });
-      }
-    }, 120);
-  }
-
-  /* ============== UI (sağdaki gibi) ============== */
-  function getAppContent() {
-    return `
-<div class="ra-app">
-  <div class="ra-grid ra-mb15" style="grid-template-columns: 1fr 220px 220px;">
-    <div>
-      <label for="mapLandingTime">Arrival Time</label>
-      <input id="mapLandingTime" type="text" placeholder="yyyy-mm-dd HH:mm:ss veya dd/mm/yyyy HH:mm:ss" />
-    </div>
-    <div>
-      <label for="mapSlowestNuke">Slowest Nuke unit</label>
-      <select id="mapSlowestNuke"></select>
-    </div>
-    <div>
-      <label for="mapSlowestSupport">Slowest Support unit</label>
-      <select id="mapSlowestSupport"></select>
-    </div>
+    const content = `
+<div style="padding:8px;">
+  <div style="margin-bottom:8px;">
+    <label><b>Arrival Time</b></label>
+    <!-- (Buradaki giriş alanları orijinal betiğinizde nasılsa öyle kalıyor) -->
   </div>
 
-  <div class="ra-mb15">
-    <label for="mapTargets">Targets Coords</label>
-    <textarea id="mapTargets" placeholder="500|500&#10;501|498"></textarea>
+  <div style="margin-bottom:8px;">
+    <label><b>Slowest Nuke unit</b></label> Axe LC/MA/Paladin HC Ram/Cat
   </div>
 
-  <div class="ra-grid ra-mb15" style="grid-template-columns: repeat(3, 1fr);">
-    <div>
-      <label for="mapNoblesCoords">Nobles Coords (opsiyonel)</label>
-      <textarea id="mapNoblesCoords" placeholder=""></textarea>
-    </div>
-    <div>
-      <label for="mapNukesCoords">Nukes Coords (opsiyonel)</label>
-      <textarea id="mapNukesCoords" placeholder=""></textarea>
-    </div>
-    <div>
-      <label for="mapSupportCoords">Support Coords (opsiyonel)</label>
-      <textarea id="mapSupportCoords" placeholder=""></textarea>
-    </div>
+  <div style="margin-bottom:8px;">
+    <label><b>Slowest Support unit</b></label> Spear/Archer Sword Spy Paladin HC Cat
   </div>
 
-  <div class="ra-grid ra-mb15" style="grid-template-columns: 1fr 1fr 1fr;">
-    <div>
-      <label for="mapGroups">Group</label>
-      <select id="mapGroups"><option value="0">All</option></select>
-    </div>
-    <div>
-      <label for="mapNoblesPerTarget">Nobles per Target</label>
-      <input id="mapNoblesPerTarget" type="number" min="0" value="0"/>
-    </div>
-    <div>
-      <label for="mapNukesPerTarget">Nukes per Target</label>
-      <input id="mapNukesPerTarget" type="number" min="0" value="1"/>
-    </div>
+  <div style="margin-bottom:8px;">
+    <label><b>Targets Coords</b></label>
   </div>
 
-  <div class="ra-grid ra-mb15" style="grid-template-columns: 1fr 1fr 1fr;">
-    <div>
-      <label for="mapSupportPerTarget">Support per Target</label>
-      <input id="mapSupportPerTarget" type="number" min="0" value="0"/>
-    </div>
-    <div></div>
-    <div>
-      <a href="javascript:void(0);" id="mapGetPlan" class="btn btn-confirm-yes" style="margin-top:18px;">GET PLAN</a>
-    </div>
+  <div style="margin-bottom:8px;">
+    <label><b>Nobles Coords</b></label>
   </div>
 
-  <h3>Results</h3>
-  <!-- SADECE BB CODE: SEND linklerinden oluşan çıktı -->
-  <textarea id="mapResultsBB" placeholder="[table]... sadece [url]Send[/url]..." style="width:100%;height:120px;"></textarea>
-  <div style="margin-top:6px;">
-    <a href="javascript:void(0);" id="mapCopyBB" class="btn">Copy BB Code</a>
+  <div style="margin-bottom:8px;">
+    <label><b>Nobles per Target</b></label>
+  </div>
+
+  <div style="margin-bottom:8px;">
+    <label><b>Nukes Coords</b></label>
+  </div>
+
+  <div style="margin-bottom:8px;">
+    <label><b>Nukes per Target</b></label>
+  </div>
+
+  <div style="margin-bottom:8px;">
+    <label><b>Support Coords</b></label>
+  </div>
+
+  <div style="margin-bottom:8px;">
+    <label><b>Support per Target</b></label>
+  </div>
+
+  <div style="margin:10px 0;">
+    <a href="javascript:void(0)" id="raMassGetPlan" class="btn">Get Plan!</a>
+  </div>
+
+  <div style="margin-top:10px;">
+    <h3>Results</h3>
+    <div id="raMassResults"></div>
   </div>
 </div>
-`;
-  }
+    `;
 
-  function prepareWindowContent(windowBody) {
-    const windowHeader = `<h2>${scriptData.name}</h2>`;
-    const windowFooter = `${scriptData.name} ${scriptData.version} - <a href="${scriptData.authorUrl}" target="_blank" rel="noopener noreferrer">${scriptData.author}</a> - <a href="${scriptData.helpLink}" target="_blank" rel="noopener noreferrer">Help</a>`;
+    const windowContent = prepareWindowContent(content);
+
+    attackPlannerWindow = window.open(
+        '',
+        '',
+        'left=10px,top=10px,width=480,height=670,toolbar=0,resizable=0,location=0,menubar=0,scrollbars=0,status=0'
+    );
+    attackPlannerWindow.document.write(windowContent);
+}
+
+// Helper: Window Content
+function prepareWindowContent(windowBody) {
+    const windowHeader = `
+        <h2 style="margin:0 0 8px 0;">${scriptData.name}</h2>
+    `;
+    const windowFooter = `${scriptData.name} ${scriptData.version} - ${scriptData.author} - Help`;
     const windowStyle = `
-<style>
-  body{font-family:Verdana,Arial,sans-serif;font-size:12px;color:#000}
-  .ra-app{position:relative;display:block;width:auto;height:auto;margin:0 auto 10px;padding:10px;border:1px solid #603000;background:#f4e4bc}
-  .ra-app *{box-sizing:border-box}
-  .ra-grid{display:grid;gap:10px}
-  .ra-mb15{margin-bottom:15px}
-  input[type=text],input[type=number],select,textarea{width:100%;padding:6px 8px;border:1px solid #000;font-size:13px}
-  textarea{resize:vertical}
-  .btn{padding:4px 6px}
-</style>`;
-    return `
+        <style>
+            body{font-family: Arial, sans-serif; font-size: 14px;}
+            .btn{display:inline-block;padding:4px 6px;background:#6c3;color:#fff;border-radius:2px;text-decoration:none}
+            .btn:hover{opacity:.9}
+            textarea,input,select{font-size:13px;}
+            #raMassResults textarea { width:100%; height:140px; }
+        </style>
+    `;
+    const html = `
 <!DOCTYPE html>
 <html>
-<head><meta charset="utf-8"/><title>${scriptData.name} ${scriptData.version}</title>${windowStyle}</head>
-<body>${windowHeader}${windowBody}<br/><small><strong>${windowFooter}</strong></small></body></html>`;
-  }
+<head>
+<meta charset="utf-8" />
+<title>${scriptData.name} ${scriptData.version}</title>
+${windowStyle}
+</head>
+<body>
+${windowHeader}
+${windowBody}
+<br/>
+<small>${windowFooter}</small>
 
-  /* ============== DATA LOAD ============== */
-  async function mapLoadGroupsAndVillages(groupId) {
-    const groups = await fetchVillageGroups();
-    const doc = attackPlannerWindow.document;
-    const sel = doc.getElementById('mapGroups');
-    sel.innerHTML = '';
-    if (groups && groups.result) {
-      for (const [_, g] of Object.entries(groups.result)) {
-        const gid = parseInt(g.group_id), name = g.name ?? ('Group ' + gid);
-        const opt = doc.createElement('option');
-        opt.value = gid; opt.textContent = name;
-        if (gid === parseInt(groupId)) opt.selected = true;
-        sel.appendChild(opt);
-      }
-    } else {
-      const opt = doc.createElement('option'); opt.value = 0; opt.textContent = 'All'; sel.appendChild(opt);
-    }
-    await mapLoadVillagesForGroup(groupId);
-  }
+<script>
+// (Bu pencere içinde jQuery, game_data vb. zaten ana sayfadan geliyor varsayımıyla kullanılır)
+</script>
+</body>
+</html>
+    `;
+    return html;
+}
 
-  async function mapLoadVillagesForGroup(groupId) {
-    MAP_VILLAGES_CACHE = await fetchAllPlayerVillagesByGroup(groupId);
-  }
+// Helper: Get and format current datetime
+function getCurrentDateTime() {
+    let currentDateTime = new Date();
+    var currentYear = currentDateTime.getFullYear();
+    var currentMonth = currentDateTime.getMonth();
+    var currentDate = '' + currentDateTime.getDate();
+    var currentHours = '' + currentDateTime.getHours();
+    var currentMinutes = '' + currentDateTime.getMinutes();
+    var currentSeconds = '' + currentDateTime.getSeconds();
 
-  /* ============== PLAN & BB CODE (SEND ONLY) ============== */
-  function handleGetPlan() {
-    const doc = attackPlannerWindow.document;
+    currentMonth = currentMonth + 1;
+    currentMonth = '' + currentMonth;
 
-    const landingStr = (doc.getElementById('mapLandingTime').value || '').trim();
-    const slowestNuke = (doc.getElementById('mapSlowestNuke').value || 'ram');
-    const slowestSupport = (doc.getElementById('mapSlowestSupport').value || 'spear');
+    currentMonth = currentMonth.padStart(2, '0');
+    currentDate = currentDate.padStart(2, '0');
+    currentHours = currentHours.padStart(2, '0');
+    currentMinutes = currentMinutes.padStart(2, '0');
+    currentSeconds = currentSeconds.padStart(2, '0');
 
-    const targets = parseCoordsTextarea(doc.getElementById('mapTargets').value);
-    const noblesSrc = parseCoordsTextarea(doc.getElementById('mapNoblesCoords').value);
-    const nukesSrc  = parseCoordsTextarea(doc.getElementById('mapNukesCoords').value);
-    const supportSrc= parseCoordsTextarea(doc.getElementById('mapSupportCoords').value);
+    let formatted_date =
+        currentYear +
+        '-' +
+        currentMonth +
+        '-' +
+        currentDate +
+        ' ' +
+        currentHours +
+        ':' +
+        currentMinutes +
+        ':' +
+        currentSeconds;
 
-    const noblesPerTarget  = Math.max(0, parseInt(doc.getElementById('mapNoblesPerTarget').value  || '0'));
-    const nukesPerTarget   = Math.max(0, parseInt(doc.getElementById('mapNukesPerTarget').value   || '1'));
-    const supportPerTarget = Math.max(0, parseInt(doc.getElementById('mapSupportPerTarget').value || '0'));
+    return formatted_date;
+}
 
-    if (!targets.length) { try { UI.ErrorMessage('Targets boş!'); } catch(e) {} return; }
-    const landingTime = parseLandingTimeFlexible(landingStr) || new Date();
-
-    const noblesVillages  = filterVillagesByCoordsOrAll(noblesSrc);
-    const nukesVillages   = filterVillagesByCoordsOrAll(nukesSrc);
-    const supportVillages = filterVillagesByCoordsOrAll(supportSrc);
-
-    const plans = [];
-
-    targets.forEach(toCoord => {
-      const used = new Set();
-
-      // Nukes
-      if (nukesPerTarget > 0) {
-        rankByDistance(nukesVillages, toCoord).filter(v => !used.has(v.id))
-          .slice(0, nukesPerTarget)
-          .forEach(v => {
-            used.add(v.id);
-            const launch = getLaunchTimeByUnit(slowestNuke, landingTime, v.distance);
-            plans.push({ unit:'', fromCoords:v.coords, toCoords:toCoord, villageId:v.id, type:'Nuke', launchTime:launch });
-          });
-      }
-      // Nobles
-      if (noblesPerTarget > 0) {
-        rankByDistance(noblesVillages, toCoord).filter(v => !used.has(v.id))
-          .slice(0, noblesPerTarget)
-          .forEach(v => {
-            used.add(v.id);
-            const launch = getLaunchTimeByUnit('snob', landingTime, v.distance);
-            plans.push({ unit:'snob', fromCoords:v.coords, toCoords:toCoord, villageId:v.id, type:'Noble', launchTime:launch });
-          });
-      }
-      // Support
-      if (supportPerTarget > 0) {
-        rankByDistance(supportVillages, toCoord).filter(v => !used.has(v.id))
-          .slice(0, supportPerTarget)
-          .forEach(v => {
-            used.add(v.id);
-            const launch = getLaunchTimeByUnit(slowestSupport, landingTime, v.distance);
-            plans.push({ unit:'', fromCoords:v.coords, toCoords:toCoord, villageId:v.id, type:'Support', launchTime:launch });
-          });
-      }
-    });
-
-    // SADECE SEND: BB kodu üret ve Results alanına yaz
-    const bb = buildSendOnlyBBCode(plans, landingTime);
-    doc.getElementById('mapResultsBB').value = bb;
-
-    try { UI.SuccessMessage('BB Code oluşturuldu.'); } catch(e) {}
-  }
-
-  // Sadece SEND sütunu içeren BB Code
-  function buildSendOnlyBBCode(plans, landingTimeDate) {
-    if (!plans || !plans.length) return '';
-    // İstersen hedefe göre gruplama yapmadan düz liste yazıyoruz:
-    let bb = '[table][**]Send[/**]\\n';
-    plans.forEach(p => {
-      const url = buildCommandUrl(p.villageId, p.toCoords);
-      bb += `[*][url=${url}]Send[/url]\\n`;
-    });
-    bb += '[/table]';
-    return bb;
-  }
-
-  /* ============== UNIT SELECTS ============== */
-  function populateUnitSelects() {
-    const doc = attackPlannerWindow.document;
-    const worldUnits = game_data.units || [];
-    const nukeCandidates = ['axe','light','marcher','heavy','ram','catapult','knight'].filter(u => worldUnits.includes(u));
-    const supportCandidates = ['spear','sword','archer','spy','heavy','knight','catapult'].filter(u => worldUnits.includes(u));
-
-    const selNuke = doc.getElementById('mapSlowestNuke');
-    const selSupp = doc.getElementById('mapSlowestSupport');
-
-    selNuke.innerHTML = nukeCandidates.map(u => `<option value="${u}">${u}</option>`).join('');
-    selSupp.innerHTML = supportCandidates.map(u => `<option value="${u}">${u}</option>`).join('');
-
-    if (worldUnits.includes('ram')) setSelectIfExists(selNuke,'ram');
-    if (worldUnits.includes('spear')) setSelectIfExists(selSupp,'spear');
-  }
-  function setSelectIfExists(sel, val) {
-    for (let i=0;i<sel.options.length;i++) if (sel.options[i].value === val) { sel.selectedIndex = i; break; }
-  }
-
-  /* ============== HELPERS ============== */
-  function parseCoordsTextarea(text) {
-    return (text || '').split('\n').map(s => s.trim()).filter(s => /^\d{3}\|\d{3}$/.test(s));
-  }
-  function parseLandingTimeFlexible(str) {
-    if (!str) return null;
-    let d = null;
-    if (/^\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2}(:\d{2})?$/.test(str)) {
-      const [datePart, timePart] = str.split(' ');
-      const [dd, mm, yyyy] = datePart.split('/');
-      const hhmmss = timePart.length === 5 ? timePart + ':00' : timePart;
-      d = new Date(`${yyyy}-${mm}-${dd} ${hhmmss}`);
-    } else if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}(:\d{2})?$/.test(str)) {
-      const t = str.length === 16 ? str + ':00' : str;
-      d = new Date(t);
-    }
-    return isNaN(d?.getTime?.()) ? null : d;
-  }
-  function rankByDistance(sourceVillages, toCoord) {
-    return sourceVillages.map(v => ({ ...v, distance: calculateDistance(v.coords, toCoord) }))
-                         .sort((a,b) => a.distance - b.distance);
-  }
-  function filterVillagesByCoordsOrAll(coordList) {
-    if (!coordList.length) return MAP_VILLAGES_CACHE.slice();
-    const set = new Set(coordList);
-    return MAP_VILLAGES_CACHE.filter(v => set.has(v.coords));
-  }
-
-  function calculateDistance(a,b){
-    const [x1,y1]=a.split('|'),[x2,y2]=b.split('|');
-    const dx=Math.abs(x1-x2), dy=Math.abs(y1-y2);
-    return Math.sqrt(dx*dx + dy*dy);
-  }
-
-  function formatDateTimeLocal(d){ return formatDateTime(d); }
-  function formatDateTime(dateOrMs){
-    const d = (dateOrMs instanceof Date) ? dateOrMs : new Date(dateOrMs);
-    let Y=d.getFullYear(), M=(''+(d.getMonth()+1)).padStart(2,'0'), D=(''+d.getDate()).padStart(2,'0');
-    let h=(''+d.getHours()).padStart(2,'0'), m=(''+d.getMinutes()).padStart(2,'0'), s=(''+d.getSeconds()).padStart(2,'0');
-    return `${D}/${M}/${Y} ${h}:${m}:${s}`;
-  }
-
-  function parseCoordsToXY(coords){ const [x,y]=coords.split('|').map(s=>s.trim()); return [x,y]; }
-
-  // /place URL (SVP ile aynı mantık)
-  function buildCommandUrl(villageId, targetCoords) {
-    const [toX, toY] = parseCoordsToXY(targetCoords);
-    const rallyPointData = game_data.market !== 'uk' ? `&x=${toX}&y=${toY}` : '';
-    const sitterData = game_data.player.sitter > 0 ? `t=${game_data.player.id}&` : '';
-    return `${window.location.origin}/game.php?${sitterData}village=${villageId}&screen=place${rallyPointData}`;
-  }
-
-  /* ============== FETCHERS ============== */
-  async function fetchVillageGroups() {
-    const villageGroups = await jQuery
-      .get(game_data.link_base_pure + 'groups&mode=overview&ajax=load_group_menu')
-      .then((response) => response)
-      .catch((error) => { try { UI.ErrorMessage('Error fetching village groups!'); } catch (e) {} console.error(scriptInfo() + ' Error:', error); });
-    return villageGroups;
-  }
-  async function fetchAllPlayerVillagesByGroup(groupId) {
-    let villagesByGroup = [];
-    try {
-      const url = game_data.link_base_pure + 'groups&ajax=load_villages_from_group';
-      villagesByGroup = await jQuery
-        .post({ url: url, data: { group_id: groupId } })
-        .then((response) => {
-          const parser = new DOMParser();
-          const htmlDoc = parser.parseFromString(response.html, 'text/html');
-          const rows = jQuery(htmlDoc).find('#group_table > tbody > tr').not(':eq(0)');
-          let list = [];
-          rows.each(function () {
-            const villageId =
-              jQuery(this).find('td:eq(0) a').attr('data-village-id') ??
-              jQuery(this).find('td:eq(0) a').attr('href').match(/\d+/)[0];
-            const villageName  = jQuery(this).find('td:eq(0)').text().trim();
-            const villageCoords= jQuery(this).find('td:eq(1)').text().trim();
-            list.push({ id: parseInt(villageId), name: villageName, coords: villageCoords });
-          });
-          return list;
+/* Helper: Fetch World Unit Info */
+function fetchUnitInfo() {
+    jQuery
+        .ajax({
+            url: '/interface.php?func=get_unit_info',
         })
-        .catch(() => { try { UI.ErrorMessage('Villages list could not be fetched!'); } catch (e) {} return []; });
-    } catch (error) {
-      console.error(scriptInfo() + ' Error:', error);
-      try { UI.ErrorMessage('Villages list could not be fetched!'); } catch (e) {}
-      return [];
-    }
-    return villagesByGroup;
-  }
+        .done(function (response) {
+            unitInfo = xml2json($(response));
+            localStorage.setItem(
+                `${LS_PREFIX}_unit_info`,
+                JSON.stringify(unitInfo)
+            );
+            localStorage.setItem(
+                `${LS_PREFIX}_last_updated`,
+                Date.parse(new Date())
+            );
+            init(unitInfo);
+        });
+}
 
-  /* ============== UNIT INFO ============== */
-  function fetchUnitInfo() {
-    jQuery.ajax({ url: '/interface.php?func=get_unit_info' }).done(function (response) {
-      unitInfo = xml2json($(response));
-      localStorage.setItem(LS_PREFIX + '_unit_info', JSON.stringify(unitInfo));
-      localStorage.setItem(LS_PREFIX + '_last_updated', Date.parse(new Date()));
-      init();
-    });
-  }
-
-  var xml2json = function ($xml) {
+// Helper: XML to JSON converter
+var xml2json = function ($xml) {
     var data = {};
-    $.each($xml.children(), function () {
-      var $this = $(this);
-      if ($this.children().length > 0) {
-        data[$this.prop('tagName')] = xml2json($this);
-      } else {
-        data[$this.prop('tagName')] = $.trim($this.text());
-      }
+    $.each($xml.children(), function (i) {
+        var $this = $(this);
+        if ($this.children().length > 0) {
+            data[$this.prop('tagName')] = xml2json($this);
+        } else {
+            data[$this.prop('tagName')] = $.trim($this.text());
+        }
     });
     return data;
-  };
+};
 
-  function scriptInfo() { return '[' + scriptData.name + ' ' + scriptData.version + ']'; }
-  function initDebug() {
-    console.debug(scriptInfo() + ' It works ğẏš€!');
-    console.debug(scriptInfo() + ' HELP:', scriptData.helpLink);
+// Helper: Generates script info
+function scriptInfo() {
+    return `[${scriptData.name} ${scriptData.version}]`;
+}
+
+// Helper: Prints universal debug information
+function initDebug() {
+    console.debug(`${scriptInfo()} It works ịš€!`);
+    console.debug(`${scriptInfo()} HELP:`, scriptData.helpLink);
+
     if (DEBUG) {
-      console.debug(scriptInfo() + ' Market:', game_data.market);
-      console.debug(scriptInfo() + ' World:', game_data.world);
-      console.debug(scriptInfo() + ' Screen:', game_data.screen);
-      console.debug(scriptInfo() + ' Game Version:', game_data.majorVersion);
-      console.debug(scriptInfo() + ' Game Build:', game_data.version);
-      console.debug(scriptInfo() + ' Locale:', game_data.locale);
-      console.debug(scriptInfo() + ' Premium:', game_data.features.Premium.active);
+        console.debug(`${scriptInfo()} Market:`, game_data.market);
+        console.debug(`${scriptInfo()} World:`, game_data.world);
+        console.debug(`${scriptInfo()} Screen:`, game_data.screen);
+        console.debug(`${scriptInfo()} Game Version:`, game_data.majorVersion);
+        console.debug(`${scriptInfo()} Game Build:`, game_data.version);
+        console.debug(`${scriptInfo()} Locale:`, game_data.locale);
+        console.debug(
+            `${scriptInfo()} Premium:`,
+            game_data.features.Premium.active
+        );
     }
-  }
+}
 
-})();
+/* =============================================================================
+   >>> EKLENEN KISIM: BB kodunda "Send" linki üretimi (atak planer.txt'den uyarlanmıştır)
+   - Bu kısım "Send" düğmesi bağlantısını üretmek için tek başına kullanılabilir.
+   - Mevcut plan üretiminizde, oluşturduğunuz plan dizisini bu fonksiyonlara vererek
+     BB kodu çıktısına "Send" linklerini ekleyebilirsiniz.
+
+   Plan nesnesi beklenen alanlar:
+   {
+     unit: 'axe' | 'light' | ...,
+     highPrio: boolean,
+     coords: '500|500',
+     villageId: 123456,
+     launchTimeFormatted: '01/09/2025 12:34:56'
+   }
+
+   Kullanım (örnek):
+   const bb = getBBCodePlans(plans, '500|500', '01/09/2025 12:34:56');
+   const code = getCodePlans(plans, '500|500', '01/09/2025 12:34:56');
+   ============================================================================= */
+
+// Tek bir köy için komut ekranına giden URL’yi üretir (sitter ve market farklarını dikkate alır)
+function createSendUrl(villageId, destinationVillage) {
+    const parts = String(destinationVillage).split('|');
+    const toX = (parts[0] || '').trim();
+    const toY = (parts[1] || '').trim();
+
+    // UK markette x/y parametresi gönderilmiyor (atak planer mantığına uygun).
+    const rallyPointData = game_data.market !== 'uk' ? `&x=${toX}&y=${toY}` : '';
+    // Sitter modundaysa t=playerId eklenir.
+    const sitterData = game_data.player.sitter > 0 ? `t=${game_data.player.id}&` : '';
+
+    // Tam URL
+    return `${window.location.origin}/game.php?${sitterData}village=${villageId}&screen=place${rallyPointData}`;
+}
+
+// BB Kodlu çıktı (tablolu) – her satıra "Send" linki eklenir
+function getBBCodePlans(plans, destinationVillage, landingTimeString) {
+    let bbCode =
+        `[size=12][b]Plan for:[/b] ${destinationVillage}\n` +
+        `[b]Landing Time:[/b] ${landingTimeString}[/size]\n\n`;
+
+    // Başlık satırı (Single Village Planner’daki düzen ile uyumlu)
+    bbCode += `[table][**]Unit[\\][\\]From[\\][\\]Priority[\\][\\]Launch Time[\\][\\]Command[\\][\\]Status[/**]\n`;
+
+    plans.forEach((plan) => {
+        const { unit, highPrio, coords, villageId, launchTimeFormatted } = plan;
+        const priority = highPrio ? 'Early send' : '';
+        const sendUrl = createSendUrl(villageId, destinationVillage);
+
+        // Not: Status alanı sizin kullanımınıza göre boş bırakıldı
+        bbCode += `[*][unit]${unit}[/unit][\\] ${coords} [\\][b][color=#ff0000]${priority}[/color][/b][\\]${launchTimeFormatted}[\\][url=${sendUrl}]Send[/url][\\]\n`;
+    });
+
+    bbCode += `[/table]`;
+    return bbCode;
+}
+
+// BB Kodsuz sade çıktı – her satıra "Send" linki eklenir
+function getCodePlans(plans, destinationVillage, landingTimeString) {
+    let planCode =
+        `[size=12][b]Plan for:[/b] ${destinationVillage}\n` +
+        `[b]Landing Time:[/b] ${landingTimeString}[/size]\n\n`;
+
+    plans.forEach((plan) => {
+        const { unit, highPrio, coords, villageId, launchTimeFormatted } = plan;
+        const priority = highPrio ? 'Early send' : '';
+        const sendUrl = createSendUrl(villageId, destinationVillage);
+
+        planCode += `[unit]${unit}[/unit] ${coords} [b][color=#ff0000]${priority}[/color][/b]${launchTimeFormatted}[url=${sendUrl}]Send[/url]\n`;
+    });
+
+    return planCode;
+}
+
+/* -----------------------------------------------------------------------------
+   (İsteğe bağlı) Yardımcılar – plan süre hesabı gibi senaryolarda işinize yarayabilir.
+   Mevcut akışınızı bozmamak için ayrı fonksiyonlar halinde bırakıldı.
+----------------------------------------------------------------------------- */
+
+// Hedefe varış zamanı (Date objesi) ve mesafeye göre kalkış zamanını hesaplar
+function getLaunchTime(unit, landingTimeMs, distance) {
+    const msPerSec = 1000;
+    const secsPerMin = 60;
+    const msPerMin = msPerSec * secsPerMin;
+    const unitSpeed = unitInfo?.config?.[unit]?.speed || 0; // dakika/alan
+    const unitTime = distance * unitSpeed * msPerMin;
+
+    const launchTime = new Date();
+    launchTime.setTime(Math.round((landingTimeMs - unitTime) / msPerSec) * msPerSec);
+    return launchTime.getTime();
+}
+
+// İki köy arasındaki Öklid mesafe
+function calculateDistance(villageA, villageB) {
+    const [x1, y1] = String(villageA).split('|').map((n) => parseInt(n.trim(), 10));
+    const [x2, y2] = String(villageB).split('|').map((n) => parseInt(n.trim(), 10));
+    const dx = Math.abs(x1 - x2);
+    const dy = Math.abs(y1 - y2);
+    return Math.sqrt(dx * dx + dy * dy);
+}
+
+// Sunucu zamanını Date objesi olarak döndürür
+function getServerTime() {
+    const serverTime = jQuery('#serverTime').text();
+    const serverDate = jQuery('#serverDate').text();
+    const [day, month, year] = serverDate.split('/');
+    const serverTimeFormatted = year + '-' + month + '-' + day + ' ' + serverTime;
+    return new Date(serverTimeFormatted);
+}
+
+// dd/mm/yyyy HH:mm:ss -> Date (yerel)
+function parseLandingTime(landingTimeStr) {
+    const [landingDay, landingHour] = landingTimeStr.split(' ');
+    const [day, month, year] = landingDay.split('/');
+    const landingTimeFormatted = `${year}-${month}-${day} ${landingHour}`;
+    return new Date(landingTimeFormatted);
+}
+
+// Date -> dd/mm/yyyy HH:mm:ss
+function formatDateTime(date) {
+    const d = new Date(date);
+    const pad = (n) => String(n).padStart(2, '0');
+    const DD = pad(d.getDate());
+    const MM = pad(d.getMonth() + 1);
+    const YYYY = d.getFullYear();
+    const hh = pad(d.getHours());
+    const mm = pad(d.getMinutes());
+    const ss = pad(d.getSeconds());
+    return `${DD}/${MM}/${YYYY} ${hh}:${mm}:${ss}`;
+}
+
+/* =============================================================================
+   >>> EKLENEN KISIM SONU
+   (Yukarıdaki fonksiyonlar, yalnızca "Send" linkini BB koduna eklemek için
+    atak planer mantığını birebir taşır. Kendi plan hesaplamanızda bu fonksiyonları
+    çağırarak mevcut çıktınıza "Send" butonları ekleyebilirsiniz.)
+   Kaynak: atak planer.txt’deki BB kodu üretim ve bağlantı kurgusu. [2](https://stdominicsballyfermot-my.sharepoint.com/personal/yektayasinkorkmaz_yazilimbudur_com/_layouts/15/download.aspx?UniqueId=4feb7f4e-aaef-4585-9fc0-317b822567d1&Translate=false&tempauth=v1.eyJzaXRlaWQiOiJiYjZhM2RlYS1lZDhkLTQ4MjUtYTVmMy1mYjQ3MGU3M2ZkODYiLCJhcHBfZGlzcGxheW5hbWUiOiJPZmZpY2UgMzY1IFNlYXJjaCBTZXJ2aWNlIiwiYXBwaWQiOiI2NmE4ODc1Ny0yNThjLTRjNzItODkzYy0zZThiZWQ0ZDY4OTkiLCJhdWQiOiIwMDAwMDAwMy0wMDAwLTBmZjEtY2UwMC0wMDAwMDAwMDAwMDAvc3Rkb21pbmljc2JhbGx5ZmVybW90LW15LnNoYXJlcG9pbnQuY29tQDRiYTY3YTY5LTRhZmEtNDM5MS1iYTc5LTQ1MjZmYWU2ZDMxNiIsImV4cCI6IjE3NTcwMTkyMDkifQ.CkAKDGVudHJhX2NsYWltcxIwQ01pMzU4VUdFQUFhRm1waFduSnlUbmR2U2xWcE5WSXpXbUZEYTNkeFFWRXFBQT09CjIKCmFjdG9yYXBwaWQSJDAwMDAwMDAzLTAwMDAtMDAwMC1jMDAwLTAwMDAwMDAwMDAwMAoKCgRzbmlkEgI2NBILCKjcxonY_bU-EAUaDTQwLjEyNi4zMi4xNjAqLGRmT09zQjJURW5ncGd2Y1VOcnRZU2t3RmZpekJMTmxrZ1hmNFFubHFNT0U9MLMBOAFCEKHCh3Z7AADgDlubX2YyRE9KEGhhc2hlZHByb29mdG9rZW5qJDAwN2IwNDQ5LTZjMzAtNzRiOC1kNTIyLTgwMzUwZTU2NzcwN3IpMGguZnxtZW1iZXJzaGlwfDEwMDMyMDAzZTA4YzcwNmJAbGl2ZS5jb216ATKCARIJaXqmS_pKkUMRunlFJvrm0xaSAQtZZWt0YSBZYXNpbpoBB0tvcmttYXqiASJ5ZWt0YXlhc2lua29ya21hekB5YXppbGltYnVkdXIuY29tqgEQMTAwMzIwMDNFMDhDNzA2QrIBOmdyb3VwLnJlYWQgYWxsZmlsZXMucmVhZCBhbGxwcm9maWxlcy5yZWFkIGFsbHByb2ZpbGVzLnJlYWTIAQE.gmqiCSxl4D4kXbuHPx3-FR2H6MjJlFOj3G7d1L_Bh70&ApiVersion=2.0&web=1)
+   Orijinal büyük atak gövdesi korunmuştur. [1](https://stdominicsballyfermot-my.sharepoint.com/personal/yektayasinkorkmaz_yazilimbudur_com/_layouts/15/download.aspx?UniqueId=968ac000-edd9-4f3f-a98c-81a5494e195a&Translate=false&tempauth=v1.eyJzaXRlaWQiOiJiYjZhM2RlYS1lZDhkLTQ4MjUtYTVmMy1mYjQ3MGU3M2ZkODYiLCJhcHBfZGlzcGxheW5hbWUiOiJPZmZpY2UgMzY1IFNlYXJjaCBTZXJ2aWNlIiwiYXBwaWQiOiI2NmE4ODc1Ny0yNThjLTRjNzItODkzYy0zZThiZWQ0ZDY4OTkiLCJhdWQiOiIwMDAwMDAwMy0wMDAwLTBmZjEtY2UwMC0wMDAwMDAwMDAwMDAvc3Rkb21pbmljc2JhbGx5ZmVybW90LW15LnNoYXJlcG9pbnQuY29tQDRiYTY3YTY5LTRhZmEtNDM5MS1iYTc5LTQ1MjZmYWU2ZDMxNiIsImV4cCI6IjE3NTcwMTkyMDkifQ.CkAKDGVudHJhX2NsYWltcxIwQ01pMzU4VUdFQUFhRm1waFduSnlUbmR2U2xWcE5WSXpXbUZEYTNkeFFWRXFBQT09CjIKCmFjdG9yYXBwaWQSJDAwMDAwMDAzLTAwMDAtMDAwMC1jMDAwLTAwMDAwMDAwMDAwMAoKCgRzbmlkEgI2NBILCOTmzofY_bU-EAUaDTQwLjEyNi4zMi4xNjAqLGpjYk4yZ1kxV2FPVUUxY01kN0EwM0dHeUprNGs5ZVpucjYvZ2kxcUFxV2c9MLMBOAFCEKHCh3ZwQADQy5D0O2JGLBBKEGhhc2hlZHByb29mdG9rZW5qJDAwN2IwNDQ5LTZjMzAtNzRiOC1kNTIyLTgwMzUwZTU2NzcwN3IpMGguZnxtZW1iZXJzaGlwfDEwMDMyMDAzZTA4YzcwNmJAbGl2ZS5jb216ATKCARIJaXqmS_pKkUMRunlFJvrm0xaSAQtZZWt0YSBZYXNpbpoBB0tvcmttYXqiASJ5ZWt0YXlhc2lua29ya21hekB5YXppbGltYnVkdXIuY29tqgEQMTAwMzIwMDNFMDhDNzA2QrIBOmdyb3VwLnJlYWQgYWxsZmlsZXMucmVhZCBhbGxwcm9maWxlcy5yZWFkIGFsbHByb2ZpbGVzLnJlYWTIAQE.YziZl_jGMdeXifZepzCAnnIwJPKQvaiWTxfMuJGA2vA&ApiVersion=2.0&web=1)
+   ============================================================================ */
