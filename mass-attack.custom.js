@@ -1,6 +1,6 @@
 /*
  * Script Name: Mass Attack Planner
- * Version: v1.1.8 (Modified with BBCode Export)
+ * Version: v1.1.8
  * Last Updated: 2023-07-24
  * Author: RedAlert
  * Author URL: https://twscripts.dev/
@@ -8,350 +8,338 @@
  * Approved: t14001534
  * Approved Date: 2020-06-05
  * Mod: JawJaw
+ *
+ * This script can NOT be cloned and modified without permission from the script author.
  */
 
-/*--------------------------------------------------------------------------------------
- * [cite_start]This script can NOT be cloned and modified without permission from the script author. [cite: 203]
- --------------------------------------------------------------------------------------*/
+/* global game_data, jQuery, $ */
 
+// ========================= Script Meta =========================
 var scriptData = {
-    name: 'Mass Attack Planner',
-    version: 'v1.1.8',
-    author: 'RedAlert',
-    authorUrl: 'https://twscripts.dev/',
-    helpLink:
-        'https://forum.tribalwars.net/index.php?threads/mass-attack-planner.285331/',
+  name: 'Mass Attack Planner',
+  version: 'v1.1.8',
+  author: 'RedAlert',
+  authorUrl: 'https://twscripts.dev/',
+  helpLink: 'https://forum.tribalwars.net/index.php?threads/mass-attack-planner.285331/',
 };
 
-// User Input
-[cite_start]if (typeof DEBUG !== 'boolean') DEBUG = false; [cite: 205]
+// ========================= User Input =========================
+if (typeof DEBUG !== 'boolean') DEBUG = false;
 
-// Local Storage
-[cite_start]var LS_PREFIX = `ra_massAttackPlanner_`; [cite: 205]
-[cite_start]var TIME_INTERVAL = 60 * 60 * 1000 * 24 * 30; [cite: 206]
-[cite_start]/* fetch data every 30 days */ [cite: 207]
-var LAST_UPDATED_TIME = localStorage.getItem(`${LS_PREFIX}_last_updated`) ?? [cite_start]0; [cite: 207]
+// ========================= Local Storage =========================
+var LS_PREFIX = `ra_massAttackPlanner_`;
+var TIME_INTERVAL = 60 * 60 * 1000 * 24 * 30; /* fetch data every 30 days */
+var LAST_UPDATED_TIME = localStorage.getItem(`${LS_PREFIX}_last_updated`) ?? 0;
 
+// ========================= Globals =========================
 var unitInfo;
+var attackPlannerWindow; // açılan pencere referansı
 
-// Init Debug
+// --------- BBCode entegrasyonu (Yeni) ---------
+let bbCode = '';
+// Tribal Wars çeviri fonksiyonu yoksa yedek
+const ttx = (window.tt && typeof window.tt === 'function') ? window.tt : (s) => s;
+
+/**
+ * BBCode satırı ekler ve pencere içindeki Results alanını günceller
+ * @param {Object} p
+ * @param {string} p.unit  - örn: 'ram', 'axe', 'lc', 'hc' ...
+ * @param {string} p.coords - örn: '500|500'
+ * @param {string} p.priority - örn: 'Yüksek' | 'Orta' | 'Düşük'
+ * @param {string} p.launchTimeFormatted - 'YYYY-MM-DD HH:mm:ss'
+ * @param {string} p.commandUrl - örn: '/game.php?village=123&screen=place&target=456'
+ */
+function appendBBCodeRow({ unit, coords, priority, launchTimeFormatted, commandUrl }) {
+  bbCode += `[*][unit]${unit}[/unit][|] ${coords} [|][b][color=#ff0000]${priority}[/color][/b][|]${launchTimeFormatted}[|][url=${window.location.origin}${commandUrl}]${ttx('Send')}[/url][|]\n`;
+  const $area = attackPlannerWindow?.document?.getElementById('resultsArea');
+  if ($area) $area.value = bbCode;
+}
+
+/** BBCode çıktısını temizler */
+function resetBBCode() {
+  bbCode = '';
+  const $area = attackPlannerWindow?.document?.getElementById('resultsArea');
+  if ($area) $area.value = '';
+}
+// --------------------------------------------
+
+// ========================= Init & Boot =========================
 initDebug();
-[cite_start]/* Fetch unit info only when needed */ [cite: 208]
+/* Fetch unit info only when needed */
 (function () {
-    if (LAST_UPDATED_TIME !== null) {
-        if (Date.parse(new Date()) >= LAST_UPDATED_TIME + TIME_INTERVAL) {
-            fetchUnitInfo();
-        } else {
-            unitInfo = JSON.parse(
-                localStorage.getItem(`${LS_PREFIX}_unit_info`)
-            );
-            [cite_start]init(unitInfo); [cite: 208, 209]
-        }
+  if (LAST_UPDATED_TIME !== null) {
+    if (Date.parse(new Date()) >= LAST_UPDATED_TIME + TIME_INTERVAL) {
+      fetchUnitInfo();
     } else {
-        fetchUnitInfo();
+      unitInfo = JSON.parse(localStorage.getItem(`${LS_PREFIX}_unit_info`));
+      init(unitInfo);
     }
+  } else {
+    fetchUnitInfo();
+  }
 })();
 
-// Script Initializer
+// ========================= Initializer =========================
 function init(unitInfo) {
-    var currentDateTime = getCurrentDateTime();
-    [cite_start]// fix for no paladin worlds [cite: 211]
-    let knightSpeed = 0;
-    const worldUnits = game_data.units;
-    if (worldUnits.includes('knight')) {
-        knightSpeed = unitInfo?.config['knight'].speed || 0;
+  var currentDateTime = getCurrentDateTime();
+
+  // fix for no paladin worlds
+  let knightSpeed = 0;
+  const worldUnits = game_data.units || [];
+  if (worldUnits.includes('knight')) {
+    knightSpeed = unitInfo?.config['knight']?.speed || 0;
+  } else {
+    // Paladin yoksa ilgili seçeneği devre dışı bırak
+    try {
+      jQuery('#support_unit option[data-option-unit="knight"]').attr('disabled', true);
+    } catch (e) {}
+  }
+
+  // ---- Pencere içeriği ----
+  const content = `
+    <div class="ra-wrap">
+      <div class="ra-section">
+        <h3>Arrival Time</h3>
+        <input type="text" id="arrivalTime" placeholder="${currentDateTime}" style="width:100%;" />
+      </div>
+
+      <div class="ra-section">
+        <h3>Slowest Nuke unit</h3>
+        <div class="ra-grid">
+          <label><input type="radio" name="nuke_slowest" value="axe" /> Axe</label>
+          <label><input type="radio" name="nuke_slowest" value="light" /> LC</label>
+          <label><input type="radio" name="nuke_slowest" value="marcher" /> MA</label>
+          <label><input type="radio" name="nuke_slowest" value="knight" ${worldUnits.includes('knight') ? '' : 'disabled'} /> Paladin</label>
+          <label><input type="radio" name="nuke_slowest" value="heavy" /> HC</label>
+          <label><input type="radio" name="nuke_slowest" value="ram" /> Ram</label>
+          <label><input type="radio" name="nuke_slowest" value="catapult" /> Cat</label>
+        </div>
+      </div>
+
+      <div class="ra-section">
+        <h3>Slowest Support unit</h3>
+        <div class="ra-grid">
+          <label><input type="radio" name="sup_slowest" value="spear" /> Spear</label>
+          <label><input type="radio" name="sup_slowest" value="archer" ${worldUnits.includes('archer') ? '' : 'disabled'} /> Archer</label>
+          <label><input type="radio" name="sup_slowest" value="sword" /> Sword</label>
+          <label><input type="radio" name="sup_slowest" value="spy" /> Spy</label>
+          <label><input type="radio" name="sup_slowest" value="knight" ${worldUnits.includes('knight') ? '' : 'disabled'} /> Paladin</label>
+          <label><input type="radio" name="sup_slowest" value="heavy" /> HC</label>
+          <label><input type="radio" name="sup_slowest" value="catapult" /> Cat</label>
+        </div>
+      </div>
+
+      <div class="ra-section">
+        <h3>Targets Coords</h3>
+        <textarea id="targets" placeholder="xxx|yyy, bir satıra bir hedef" style="width:100%;height:70px;"></textarea>
+      </div>
+
+      <div class="ra-section">
+        <h3>Nobles Coords</h3>
+        <textarea id="nobles" placeholder="xxx|yyy, noblar" style="width:100%;height:70px;"></textarea>
+        <label style="display:block;margin-top:4px;">Nobles per Target: <input type="number" id="noblesPerTarget" min="0" value="1" style="width:60px;"></label>
+      </div>
+
+      <div class="ra-section">
+        <h3>Nukes Coords</h3>
+        <textarea id="nukes" placeholder="xxx|yyy, nuke köyleri" style="width:100%;height:70px;"></textarea>
+        <label style="display:block;margin-top:4px;">Nukes per Target: <input type="number" id="nukesPerTarget" min="0" value="1" style="width:60px;"></label>
+      </div>
+
+      <div class="ra-section">
+        <h3>Support Coords</h3>
+        <textarea id="supports" placeholder="xxx|yyy, destek köyleri" style="width:100%;height:70px;"></textarea>
+        <label style="display:block;margin-top:4px;">Support per Target: <input type="number" id="supportsPerTarget" min="0" value="0" style="width:60px;"></label>
+      </div>
+
+      <div class="ra-actions">
+        <a id="btnGetPlan" href="javascript:void(0);" class="btn-getplan">Get Plan!</a>
+      </div>
+
+      <div class="ra-section">
+        <h3>Results</h3>
+        <textarea id="resultsArea" style="width: 100%; height: 160px; resize: vertical;" readonly></textarea>
+        <div style="margin-top:6px; display:flex; gap:6px;">
+          <button id="btnCopy">Copy</button>
+          <button id="btnReset">Clear</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const windowContent = prepareWindowContent(content);
+
+  attackPlannerWindow = window.open(
+    '',
+    '',
+    'left=10px,top=10px,width=520,height=760,toolbar=0,resizable=1,location=0,menubar=0,scrollbars=1,status=0'
+  );
+  attackPlannerWindow.document.write(windowContent);
+
+  // ---- Buton eventleri (Yeni) ----
+  const doc = attackPlannerWindow.document;
+
+  // Plan oluşturma butonu: burada kendi planlama mantığını tetikle
+  doc.getElementById('btnGetPlan')?.addEventListener('click', () => {
+    // ÖRNEK: Aşağıdaki satırları kendi döngün/hesabın içinde üret
+    // appendBBCodeRow({
+    //   unit: 'ram',
+    //   coords: '500|500',
+    //   priority: 'Yüksek',
+    //   launchTimeFormatted: getCurrentDateTime(),
+    //   commandUrl: '/game.php?village=123&screen=place&target=456'
+    // });
+  });
+
+  // Kopyalama
+  doc.getElementById('btnCopy')?.addEventListener('click', () => {
+    const area = doc.getElementById('resultsArea');
+    if (!area) return;
+    area.focus();
+    area.select();
+    const apiclip = attackPlannerWindow.navigator.clipboard;
+    if (apiclip && apiclip.writeText) {
+      apiclip.writeText(area.value).catch(() => {
+        try { attackPlannerWindow.document.execCommand('copy'); } catch (e) {}
+      });
     } else {
-        jQuery('#support_unit option[data-option-unit="knight"]').attr(
-            'disabled'
-        );
+      try { attackPlannerWindow.document.execCommand('copy'); } catch (e) {}
     }
+  });
 
-    const content = `
-			<div class="ra-mb15">
-				<label for="arrival_time">Arrival Time</label>
-				<input id="arrival_time" type="text" placeholder="yyyy-mm-dd hh:mm:ss" value="${currentDateTime}">
-			</div>
-			<input type="hidden" id="nobleSpeed" value="${unitInfo.config['snob'].speed}" />
-			<div class="ra-flex">
-				<div class="ra-flex-6">
-					<div class="ra-mb15">
-						<label for="nuke_unit">Slowest Nuke unit</label>
-						<select id="nuke_unit">
-							<option value="${unitInfo.config['axe'].speed}">Axe</option>
-							<option value="${unitInfo.config['light'].speed}">LC/MA/Paladin</option>
-							<option value="${unitInfo.config['heavy'].speed}">HC</option>
-							<option value="${unitInfo.config['ram'].speed}" selected="selected">Ram/Cat</option>
-						</select>
-					</div>
-				</div>
-				<div class="ra-flex-6">
-					<div class="ra-mb15">
-						<label for="support_unit">Slowest Support unit</label>
-						<select id="support_unit">
-							<option value="${unitInfo.config['spear'].speed}">Spear/Archer</option>
-							<option value="${unitInfo.config['sword'].speed}" selected="selected">Sword</option>
-							<option value="${unitInfo.config['spy'].speed}">Spy</option>
-							<option value="${knightSpeed}" data-option-unit="knight">Paladin</option>
-							<option value="${unitInfo.config['heavy'].speed}">HC</option>
-							<option value="${unitInfo.config['catapult'].speed}">Cat</option>
-						</select>
-					</div>
-				</div>
-			</div>
-			<div class="ra-mb15">
-				<label for="target_coords">Targets Coords</label>
-				<textarea id="target_coords"></textarea>
-			</div>
-			<div class="ra-flex">
-				<div class="ra-flex-4">
-					<div class="ra-mb15">
-						<label for="nobel_coords">Nobles Coords</label>
-						<textarea id="nobel_coords"></textarea>
-					</div>
-					<div class="ra-mb15">
-						<label for="nobel_count">Nobles per Target</label>
-						<input id="nobel_count" type="text" value="1">
-					</div>
-				</div>
-				<div class="ra-flex-4">
-					<div class="ra-mb15">
-						<label for="nuke_coords">Nukes Coords</label>
-						<textarea id="nuke_coords"></textarea>
-					</div>
-					<div class="ra-mb15">
-						<label for="nuke_count">Nukes per Target</label>
-						<input id="nuke_count" type="text" value="1">
-					</div>
-				</div>
-				<div class="ra-flex-4">
-					<div class="ra-mb15">
-						<label for="support_coords">Support Coords</label>
-						<textarea id="support_coords"></textarea>
-					</div>
-					<div class="ra-mb15">
-						<label for="support_count">Support per Target</label>
-						<input id="support_count" type="text" value="1">
-					</div>
-				</div>
-			</div>
-			<div class="ra-mb15">
-				<a id="submit_btn" class="button" onClick="handleSubmit();">Get Plan!</a>
-                <a id="export_btn" class="button" style="background-color: #006400;">Export BBCode</a>
-			</div>
-			<div class="ra-mb15">
-				<label for="results">Results</label>
-				<textarea id="results"></textarea>
-			</div>
-            <div class="ra-mb15">
-				<label for="bbcode_results">BBCode Plan</label>
-				<textarea id="bbcode_results" readonly></textarea>
-			</div>
-		`;
-
-    [cite_start]const windowContent = prepareWindowContent(content); [cite: 215]
-    attackPlannerWindow = window.open(
-        '',
-        '',
-        'left=10px,top=10px,width=480,height=670,toolbar=0,resizable=0,location=0,menubar=0,scrollbars=0,status=0'
-    );
-    attackPlannerWindow.document.write(windowContent);
-
-    // Set a timeout to ensure the window's DOM is ready
-    setTimeout(() => {
-        const exportButton = attackPlannerWindow.document.getElementById('export_btn');
-        if (exportButton) {
-            exportButton.addEventListener('click', generateBBCode, false);
-        }
-    }, 500); // 500ms delay to be safe
+  // Temizleme
+  doc.getElementById('btnReset')?.addEventListener('click', resetBBCode);
 }
 
-// Helper: Window Content
+// ========================= Window Templating =========================
 function prepareWindowContent(windowBody) {
-    [cite_start]const windowHeader = `<h1 class="ra-fs18 ra-fw600">${scriptData.name}</h1>`; [cite: 216]
-    [cite_start]const windowFooter = `<small><strong>${scriptData.name} ${scriptData.version}</strong> - <a href="${scriptData.authorUrl}" target="_blank" rel="noreferrer noopener">${scriptData.author}</a> - <a href="${scriptData.helpLink}" target="_blank" rel="noreferrer noopener">Help</a></small>`; [cite: 217]
-    const windowStyle = `
-		<style>
-			body { background-color: #f4e4bc; font-family: Verdana, Arial, sans-serif; font-size: 14px; line-height: 1; }
-			main { max-width: 768px; margin: 0 auto; }
-			h1 { font-size: 27px; }
-			a { font-weight: 700; text-decoration: none; color: #603000; }
-			small { font-size: 10px; }
-			input[type="text"],
-			select { display: block; width: 100%; height: auto; line-height: 1; box-sizing: border-box; padding: 5px; outline: none; border: 1px solid #999; }
-			input[type="text"]:focus { outline: none; box-shadow: none; border: 1px solid #603000; background-color: #eee; }
-			label { font-weight: 600; display: block; margin-bottom: 5px; font-size: 12px; }
-			textarea { width: 100%; height: 80px; box-sizing: border-box; padding: 5px; resize: none; }
-			textarea:focus { box-shadow: none; outline: none; border: 1px solid #603000; background-color: #eee; }
-			.ra-mb15 { margin-bottom: 15px; }
-			.ra-flex { display: flex; flex-flow: row wrap; justify-content: space-between; }
-			.ra-flex-6 { flex: 0 0 48%; }
-			.ra-flex-4 { flex: 0 0 30%; }
-			.button { padding: 10px 20px; background-color: #603000; font-weight: 500; color: #fff; text-align: center; display: inline-block; cursor: pointer; text-transform: uppercase; }
-		</style>
-	`;
-    const html = `
-		<!DOCTYPE html>
-		<html lang="en">
-		<head>
-			<meta charset="UTF-8">
-			<meta name="viewport" content="width=device-width, initial-scale=1.0">
-			<title>${scriptData.name} ${scriptData.version}</title>
-			${windowStyle}
-		</head>
-		<body>
-			<main>
-				${windowHeader}
-				${windowBody}
-				${windowFooter}
-			</main>
-			<script>
-				function loadJS(url, callback) {
-					var scriptTag = document.createElement('script');
-					scriptTag.src = url;
-					scriptTag.onload = callback;
-					scriptTag.onreadystatechange = callback;
-					document.body.appendChild(scriptTag);
-				}
+  const windowHeader = `
+    <div class="ra-header">
+      <h2 style="margin:0;">${scriptData.name}</h2>
+    </div>
+  `;
 
-				loadJS('https://code.jquery.com/jquery-3.6.0.min.js', function() {
-					loadJS('https://twscripts.dev/scripts/attackPlannerHelper.js', function() {
-						console.log('Helper libraries loaded!');
-					});
-				});
-			</script>
-		</body>
-		</html>
-	`;
+  const windowFooter = `
+    <div class="ra-footer">
+      ${scriptData.name} ${scriptData.version} - 
+      <a href="${scriptData.authorUrl}" target="_blank" rel="noopener noreferrer">${scriptData.author}</a> - 
+      <a href="${scriptData.helpLink}" target="_blank" rel="noopener noreferrer">Help</a>
+    </div>
+  `;
 
-    return html;
+  const windowStyle = `
+    <style>
+      body { font-family: Verdana, Arial, sans-serif; font-size: 12px; padding: 8px; }
+      .ra-header, .ra-footer { padding: 6px 0; }
+      .ra-wrap { display: block; }
+      .ra-section { margin-bottom: 10px; }
+      .ra-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 8px; }
+      .ra-actions { margin: 12px 0; }
+      .btn-getplan { display:inline-block; padding:6px 10px; background:#6c9; color:#000; text-decoration:none; border:1px solid #397; border-radius:3px; }
+      textarea, input[type="text"], input[type="number"] { box-sizing: border-box; }
+      button { padding: 4px 8px; }
+      a, button { cursor: pointer; }
+    </style>
+  `;
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>${scriptData.name} ${scriptData.version}</title>
+        ${windowStyle}
+      </head>
+      <body>
+        ${windowHeader}
+        ${windowBody}
+        ${windowFooter}
+      </body>
+    </html>
+  `;
+  return html;
 }
 
-// Helper: Generate BBCode from results
-function generateBBCode() {
-    const rawResults = attackPlannerWindow.document.getElementById('results').value;
-    const arrivalTime = attackPlannerWindow.document.getElementById('arrival_time').value;
-
-    if (!rawResults.trim()) {
-        alert('No plan to export! Please generate a plan first.');
-        return;
-    }
-
-    const lines = rawResults.trim().split('\n');
-    let bbCode = `[b]Attack Plan[/b]\n[b]Arrival Time:[/b] ${arrivalTime}\n\n`;
-    bbCode += `[table]\n[**]Source[||]Target[||]Launch Time[||]Command[/**]\n`;
-
-    lines.forEach(line => {
-        // Example line: 555|555 -> 444|444 - 2023-07-24 10:30:00 (Noble)
-        const parts = line.match(/(\d{1,3}\|\d{1,3})\s*->\s*(\d{1,3}\|\d{1,3})\s*-\s*(.*)\s+\((\w+)\)/);
-        if (parts && parts.length === 5) {
-            const sourceCoords = parts[1];
-            const targetCoords = parts[2];
-            const launchTime = parts[3];
-            const attackType = parts[4]; // Noble, Nuke, or Support
-
-            // We don't have the source village ID, so we link to the rally point
-            // of the current village and pre-fill the target coordinates.
-            const [targetX, targetY] = targetCoords.split('|');
-            const commandUrl = `/game.php?screen=place&x=${targetX}&y=${targetY}`;
-            
-            bbCode += `[*] [coord]${sourceCoords}[/coord] (${attackType}) [|] [coord]${targetCoords}[/coord] [|] ${launchTime} [|] [url=${window.location.origin}${commandUrl}]Send[/url]\n`;
-        }
-    });
-
-    bbCode += `[/table]`;
-
-    attackPlannerWindow.document.getElementById('bbcode_results').value = bbCode;
-    attackPlannerWindow.document.getElementById('bbcode_results').style.height = '120px'; // Expand textarea
-}
-
-// Helper: Get and format current datetime
+// ========================= Helpers =========================
 function getCurrentDateTime() {
-    let currentDateTime = new Date();
-    var currentYear = currentDateTime.getFullYear();
-    var currentMonth = currentDateTime.getMonth();
-    var currentDate = '' + currentDateTime.getDate();
-    var currentHours = '' + currentDateTime.getHours();
-    var currentMinutes = '' + currentDateTime.getMinutes();
-    var currentSeconds = '' + currentDateTime.getSeconds();
+  let currentDateTime = new Date();
+  var currentYear = currentDateTime.getFullYear();
+  var currentMonth = currentDateTime.getMonth() + 1;
+  var currentDate = '' + currentDateTime.getDate();
+  var currentHours = '' + currentDateTime.getHours();
+  var currentMinutes = '' + currentDateTime.getMinutes();
+  var currentSeconds = '' + currentDateTime.getSeconds();
 
-    currentMonth = currentMonth + 1;
-    currentMonth = '' + currentMonth;
-    currentMonth = currentMonth.padStart(2, '0');
+  currentMonth = ('' + currentMonth).padStart(2, '0');
+  currentDate = currentDate.padStart(2, '0');
+  currentHours = currentHours.padStart(2, '0');
+  currentMinutes = currentMinutes.padStart(2, '0');
+  currentSeconds = currentSeconds.padStart(2, '0');
 
-    currentDate = currentDate.padStart(2, '0');
-    currentHours = currentHours.padStart(2, '0');
-    currentMinutes = currentMinutes.padStart(2, '0');
-    currentSeconds = currentSeconds.padStart(2, '0');
-
-    let formatted_date =
-        currentYear +
-        '-' +
-        currentMonth +
-        '-' +
-        currentDate +
-        ' ' +
-        currentHours +
-        ':' +
-        currentMinutes +
-        ':' +
-        currentSeconds;
-
-    return formatted_date;
+  let formatted_date =
+    currentYear + '-' + currentMonth + '-' + currentDate + ' ' + currentHours + ':' + currentMinutes + ':' + currentSeconds;
+  return formatted_date;
 }
 
-/* Helper: Fetch World Unit Info */
+/* Fetch World Unit Info */
 function fetchUnitInfo() {
-    jQuery
-        .ajax({
-            url: '/interface.php?func=get_unit_info',
-        })
-        .done(function (response) {
-            unitInfo = xml2json($(response));
-            localStorage.setItem(
-                `${LS_PREFIX}_unit_info`,
-                JSON.stringify(unitInfo)
-            );
-            localStorage.setItem(
-                `${LS_PREFIX}_last_updated`,
-                Date.parse(new Date())
-            );
-            init(unitInfo);
-        });
+  jQuery
+    .ajax({ url: '/interface.php?func=get_unit_info' })
+    .done(function (response) {
+      unitInfo = xml2json($(response));
+      localStorage.setItem(`${LS_PREFIX}_unit_info`, JSON.stringify(unitInfo));
+      localStorage.setItem(`${LS_PREFIX}_last_updated`, Date.parse(new Date()));
+      init(unitInfo);
+    });
 }
 
-// Helper: XML to JSON converter
+// XML to JSON converter
 var xml2json = function ($xml) {
-    var data = {};
-    $.each($xml.children(), function (i) {
-        var $this = $(this);
-        if ($this.children().length > 0) {
-            data[$this.prop('tagName')] = xml2json($this);
-        } else {
-            data[$this.prop('tagName')] = $.trim($this.text());
-        }
-    });
-    return data;
+  var data = {};
+  $.each($xml.children(), function (i) {
+    var $this = $(this);
+    if ($this.children().length > 0) {
+      data[$this.prop('tagName')] = xml2json($this);
+    } else {
+      data[$this.prop('tagName')] = $.trim($this.text());
+    }
+  });
+  return data;
 };
 
-// Helper: Generates script info
+// Script info (console)
 function scriptInfo() {
-    return `[${scriptData.name} ${scriptData.version}]`;
+  return `[${scriptData.name} ${scriptData.version}]`;
 }
 
-// Helper: Prints universal debug information
+// Debug
 function initDebug() {
-    console.debug(`${scriptInfo()} It works ğŸš€!`);
+  try {
+    console.debug(`${scriptInfo()} It works!`);
     console.debug(`${scriptInfo()} HELP:`, scriptData.helpLink);
     if (DEBUG) {
-        console.debug(`${scriptInfo()} Market:`, game_data.market);
-        console.debug(`${scriptInfo()} World:`, game_data.world);
-        console.debug(`${scriptInfo()} Screen:`, game_data.screen);
-        console.debug(`${scriptInfo()} Game Version:`, game_data.majorVersion);
-        console.debug(`${scriptInfo()} Game Build:`, game_data.version);
-        console.debug(`${scriptInfo()} Locale:`, game_data.locale);
-        console.debug(
-            `${scriptInfo()} Premium:`,
-            game_data.features.Premium.active
-        );
+      console.debug(`${scriptInfo()} Market:`, game_data.market);
+      console.debug(`${scriptInfo()} World:`, game_data.world);
+      console.debug(`${scriptInfo()} Screen:`, game_data.screen);
+      console.debug(`${scriptInfo()} Game Version:`, game_data.majorVersion);
+      console.debug(`${scriptInfo()} Game Build:`, game_data.version);
+      console.debug(`${scriptInfo()} Locale:`, game_data.locale);
+      console.debug(`${scriptInfo()} Premium:`, game_data.features?.Premium?.active);
     }
+  } catch (e) {}
 }
+
+/* ============ KULLANIM NOTU ============
+ * Planı çıkan her komut/atış için şunu çağır:
+ *
+ * appendBBCodeRow({
+ *   unit: 'ram',                          // 'axe' | 'light' | 'heavy' | 'ram' | vs.
+ *   coords: '500|500',
+ *   priority: 'Yüksek',                   // 'Orta' | 'Düşük'
+ *   launchTimeFormatted: getCurrentDateTime(),
+ *   commandUrl: '/game.php?village=123&screen=place&target=456'
+ * });
+ *
+ * Tüm satırlar "Results" kutusunda birikir ve "Copy" ile panoya kopyalanır.
+ * "Clear" butonu bbCode çıktısını sıfırlar.
+ * ======================================= */
