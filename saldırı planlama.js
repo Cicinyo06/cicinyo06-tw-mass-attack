@@ -201,17 +201,17 @@
         </fieldset>
 
         <!-- İsimli satırlardan koordinatları otomatik ayıklar -->
-        <label>Targets (satır satır yapıştır: ör. ADA KULE - 06 (452|556) ...)</label>
-        <textarea id="targetsCoords" placeholder="ADA KULE - 06 (452|556) K54&#10;ADA KULE - 07 (452|558) K54"></textarea>
+        <label>Targets </label>
+        <textarea id="targetsCoords" placeholder="KOORDİNATLAR"></textarea>
 
         <label>Nukes Coords (serbest metin / tek veya çoklu koordinat kabul eder)</label>
-        <textarea id="nukesCoords" placeholder="621|409&#10;620|410"></textarea>
+        <textarea id="nukesCoords" placeholder="KOORDİNATLAR"></textarea>
 
         <label>Nobles Coords (serbest metin)</label>
         <textarea id="noblesCoords" placeholder="630|400"></textarea>
 
         <label>Support Coords (serbest metin)</label>
-        <textarea id="supportCoords" placeholder="540|540"></textarea>
+        <textarea id="supportCoords" placeholder="KOORDİNATLAR"></textarea>
 
         <!-- NOT: v6'da per-target sayıları YOK SAYILIYOR; tüm kaynak koordinatlar kullanılacak -->
         <div style="display:flex; gap:10px;">
