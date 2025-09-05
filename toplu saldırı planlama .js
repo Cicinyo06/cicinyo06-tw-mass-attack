@@ -208,7 +208,7 @@
         <textarea id="nukesCoords" placeholder="KOORDİNATLAR"></textarea>
 
         <label>Nobles Coords (serbest metin)</label>
-        <textarea id="noblesCoords" placeholder="630|400"></textarea>
+        <textarea id="noblesCoords" placeholder="KOORDİNATLAR"></textarea>
 
         <label>Support Coords (serbest metin)</label>
         <textarea id="supportCoords" placeholder="KOORDİNATLAR"></textarea>
