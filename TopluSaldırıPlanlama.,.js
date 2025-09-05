@@ -1,12 +1,12 @@
 /*
- * File: dddd.js (v6.6)
- * Purpose: Büyük Atak – TR BBCode Export + "Gönder" linki
- * Değişiklikler (v6.6):
- *  - Nukes/Nobles/Support per Target değerleri artık aktif.
- *  - Her hedef için ilgili havuzdan en fazla N kaynak çekilir (splice) ve havuzdan düşer.
- *  - Aynı köy bir sonraki hedefte tekrar kullanılmaz.
+ * File: dddd.js (v6.9)
+ * Purpose: Büyük Atak – TR BBCode Export + "Gönder" linki 
+ * Yenilikler:
+ *  - 3 ayrı hedef alanı: Hedefler–Nukes / Hedefler–Nobles / Hedefler–Support
+ *  - Per-target tüketim: aynı kaynak köy başka hedefte tekrar kullanılmaz
+ *  - Düz satır BBCode (tablo & başlık yok), kalkış zamanına göre (ASC) sıralı çıktı
  */
-(function DDDD_MassAttack_TR_BBCode_OneFile_v66() {
+(function DDDD_MassAttack_TR_BBCode_OneFile_v69() {
   // ---------- Durum ----------
   var LS_PREFIX = 'dd_tr_mass_attack';
   var TIME_INTERVAL = 60 * 60 * 1000 * 30; // 30 gün
@@ -35,7 +35,7 @@
     var dd=m[1], mm=m[2], yy=m[3], HH=m[4], MM=m[5], SS=m[6];
     return new Date(`${yy}-${mm}-${dd} ${HH}:${MM}:${SS}`);
   }
-  // Satırlarda örnekteki gibi (baştaki 0'sız gün/ay)
+  // Satır (başta 0'suz gün/ay)
   function fmtUnpadded(date){
     var D  = String(date.getDate());
     var M  = String(date.getMonth()+1);
@@ -63,7 +63,7 @@
   }
   function toInt(v, def){ var n=parseInt(v,10); return isNaN(n)?def:n; }
 
-  // İsimli satırlardan koordinatları otomatik ayıkla (tekrarları eler, sırayı korur)
+  // Metinden koordinatları ayıkla (tekrarları eler, sırayı korur)
   function parseCoords(text){
     var out = [];
     var seen = new Set();
@@ -113,40 +113,30 @@
     }
   }
 
-  // ---------- TR BBCode üretici (+Gönder linki) ----------
-  // prefix: 'kami' | 'mis' | 'destek'
-  function getBBCodePlans_TR(plans, destinationVillage, landingTimeString, prefix) {
-    var pre = prefix ? (prefix + ' ') : '';
-    var bb  = `[size=12][b]Plan için:[/b] ${pre}${destinationVillage}\n`;
-        bb += `[b]İniş zamanı:[/b] ${landingTimeString}[/size]\n\n`;
-        bb += `[table][**]Birim[||]Z[||]Öncelik[||]Başlatma Zamanı:[||]Komut[||]Durum[/**]\n`;
-
-    var origin = (window.location.origin || '').replace(/\/$/,'');
-
-    plans.forEach(function(p){
-      var unit = p.unit;
-      var highPrio = p.highPrio ? 'erken gönder' : '';
-      var coords = p.coords;
-      var villageId = p.villageId || ''; // boş da olsa link çalışır
-      var launchTimeFormatted = p.launchTimeFormatted;
-      var to = String(destinationVillage).split('|');
-      var toX = to[0] || '', toY = to[1] || '';
-
-      var rallyPointData = game_data.market !== 'uk' ? `&x=${toX}&y=${toY}` : '';
-      var sitterData = game_data.player.sitter > 0 ? `t=${game_data.player.id}` : '';
-      var commandUrl = `/game.php?${sitterData}&village=${villageId}&screen=place${rallyPointData}`;
-
-      bb += `[*][unit]${unit}[/unit][|] ${coords} [|][b][color=#ff0000]${highPrio}[/color][/b][|]` +
-            `${launchTimeFormatted}[|][url=${origin}${commandUrl}]Gönder[/url][|]\n`;
+  // ---------- Düz satır üretici (başlıksız) ----------
+  function plansToFlatBBCode(plansFlat) {
+    const origin = (window.location.origin || '').replace(/\/$/,'');
+    let out = '';
+    plansFlat.forEach((p) => {
+      const unit = p.unit;
+      const from = p.coords;
+      const dest = p.destination;
+      const villageId = p.villageId || '';
+      const launch = p.launchTimeFormatted; // unpadded
+      const [toX, toY] = String(dest).split('|');
+      const rallyPointData = game_data.market !== 'uk' ? `&x=${toX}&y=${toY}` : '';
+      const sitterData = game_data.player.sitter > 0 ? `t=${game_data.player.id}` : '';
+      const commandUrl = `/game.php?${sitterData}&village=${villageId}&screen=place${rallyPointData}`;
+      out += `[unit]${unit}[/unit] ${from} -> ${dest} - ` +
+             `[color=#ff0000]${launch}[/color] - ` +
+             `[url=${origin}${commandUrl}]Gönder[/url]\n`;
     });
-
-    bb += `[/table]`;
-    return bb;
+    return out;
   }
 
   // ---------- Popup ----------
   function openWindow() {
-    var W = 560, H = 780;
+    var W = 620, H = 900;
     attackPlannerWindow = window.open('', '', `left=20,top=20,width=${W},height=${H},toolbar=0,resizable=1,location=0,menubar=0,scrollbars=1,status=0`);
     if (!attackPlannerWindow) { alert('Popup engellendi. Lütfen bu site için pop-up izni verin.'); return; }
 
@@ -155,7 +145,7 @@
       <html>
       <head>
         <meta charset="utf-8">
-        <title>Büyük Atak – TR BBCode</title>
+        <title>Büyük Atak – TR BBCode (Düz Satır)</title>
         <style>
           body { font: 13px/1.4 Arial, sans-serif; padding: 10px; }
           label { font-weight: 600; display:block; margin: 8px 0 4px; }
@@ -164,10 +154,11 @@
           fieldset { border:1px solid #999; padding:8px; margin:10px 0; }
           button { padding:6px 10px; }
           small { color:#555; }
+          .grid3 { display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
         </style>
       </head>
       <body>
-        <h3>Büyük Atak – TR BBCode</h3>
+        <h3>Büyük Atak – TR BBCode (Düz Satır & Başlıksız)</h3>
 
         <label>İniş Zamanı (dd/mm/yyyy HH:mm:ss)</label>
         <input id="arrivalTime" type="text" placeholder="06/10/2025 23:59:59"/>
@@ -196,18 +187,37 @@
           </select>
         </fieldset>
 
-        <!-- İsimli satırlardan koordinatları otomatik ayıklar -->
-        <label>Targets</label>
-        <textarea id="targetsCoords" placeholder="KOORDİNATLAR"></textarea>
+        <!-- 3 AYRI TARGET ALANI -->
+        <fieldset>
+          <legend>Hedefler</legend>
+          <div class="grid3">
+            <div>
+              <label>Hedefler – Nukes</label>
+              <textarea id="targetsNuke" placeholder=""></textarea>
+            </div>
+            <div>
+              <label>Hedefler – Nobles</label>
+              <textarea id="targetsNoble" placeholder=""></textarea>
+            </div>
+            <div>
+              <label>Hedefler – Support</label>
+              <textarea id="targetsSupport" placeholder=""></textarea>
+            </div>
+          </div>
+        </fieldset>
 
-        <label>Nukes Coords</label>
-        <textarea id="nukesCoords" placeholder="KOORDİNATLAR"></textarea>
+        <!-- Kaynak listeler -->
+        <fieldset>
+          <legend>Kaynak Köyler</legend>
+          <label>Nukes Coords</label>
+          <textarea id="nukesCoords" placeholder=""></textarea>
 
-        <label>Nobles Coords</label>
-        <textarea id="noblesCoords" placeholder="KOORDİNATLAR"></textarea>
+          <label>Nobles Coords</label>
+          <textarea id="noblesCoords" placeholder=""></textarea>
 
-        <label>Support Coords</label>
-        <textarea id="supportCoords" placeholder="KOORDİNATLAR"></textarea>
+          <label>Support Coords</label>
+          <textarea id="supportCoords" placeholder=""></textarea>
+        </fieldset>
 
         <div style="display:flex; gap:10px;">
           <div style="flex:1">
@@ -229,7 +239,7 @@
         </div>
 
         <fieldset>
-          <legend>Results (TR BBCode)</legend>
+          <legend>Results (TR BBCode, düz satır)</legend>
           <textarea id="resultsBBCode" style="height:260px;"></textarea>
         </fieldset>
 
@@ -241,7 +251,7 @@
     attackPlannerWindow.document.write(html);
     attackPlannerWindow.document.close();
 
-    // Güvenli bağlama: buton oluşana kadar bekle
+    // Güvenli bağlama
     var tries = 0;
     var bindTick = setInterval(function(){
       try{
@@ -253,9 +263,7 @@
           clearInterval(bindTick);
           alert('Get Plan butonu bulunamadı (popup yüklenemedi).');
         }
-      } catch(e){
-        // beklemeye devam
-      }
+      } catch(e){}
     }, 100);
   }
 
@@ -277,18 +285,28 @@
           if (!(arrivalDate instanceof Date) || isNaN(arrivalDate)) {
             alert('İniş zamanı formatı dd/mm/yyyy HH:mm:ss olmalı.'); return;
           }
-          // Başlık için parent gizli alana yaz
+
+          // Başlık için parent gizli alana yaz (gerekirse)
           if (!document.getElementById('raLandingTime')) {
             var inp = document.createElement('input'); inp.type='hidden'; inp.id='raLandingTime';
             document.body.appendChild(inp);
           }
           document.getElementById('raLandingTime').value = arrivalStr;
 
-          var targets   = parseCoords((doc.getElementById('targetsCoords').value || ''));
+          // 3 ayrı hedef listesi
+          var targetsNuke   = parseCoords((doc.getElementById('targetsNuke').value   || ''));
+          var targetsNoble  = parseCoords((doc.getElementById('targetsNoble').value  || ''));
+          var targetsSupport= parseCoords((doc.getElementById('targetsSupport').value|| ''));
+
+          // En az bir hedef olmalı
+          if (!targetsNuke.length && !targetsNoble.length && !targetsSupport.length) {
+            alert('Herhangi bir hedef girilmedi.'); return;
+          }
+
+          // Kaynaklar
           var nukesAll  = parseCoords((doc.getElementById('nukesCoords').value  || ''));
           var noblesAll = parseCoords((doc.getElementById('noblesCoords').value || ''));
           var supAll    = parseCoords((doc.getElementById('supportCoords').value|| ''));
-          if (!targets.length) { alert('Targets içinde koordinat bulunamadı.'); return; }
 
           var nukesPerTarget   = Math.max(0, toInt(doc.getElementById('nukesPerTarget')?.value, 0));
           var noblesPerTarget  = Math.max(0, toInt(doc.getElementById('noblesPerTarget')?.value, 0));
@@ -297,85 +315,68 @@
           var nukeUnit    = doc.getElementById('slowestNukeUnit').value || 'ram';
           var supportUnit = doc.getElementById('slowestSupportUnit').value || 'spear';
 
-          // Havuzlar (tüketilecek kopyalar)
+          // Havuzlar (tüketilecek)
           var nukesPool   = nukesAll.slice();
           var noblesPool  = noblesAll.slice();
           var supportPool = supAll.slice();
 
           // villageId eşlemesi al (hata olsa da devam)
           mapOwnVillageIdsByCoords().then(function(coordToId){
-            var fullBB = '';
+            var globalPlans = [];
 
-            // Her hedef için havuzdan çek → tekrar kullanım yok
-            targets.forEach(function(target){
-              var allPlans = [];
-
-              // Nukes
+            // --- NUKES hedefleri ---
+            targetsNuke.forEach(function(target){
               var takeN = Math.max(0, Math.min(nukesPerTarget, nukesPool.length));
               var useNukes = nukesPool.splice(0, takeN);
               useNukes.forEach(function(from){
-                allPlans.push(makePlan(from, target, nukeUnit, 'nuke', arrivalDate, coordToId[from]));
+                globalPlans.push(makePlan(from, target, nukeUnit, 'nuke', arrivalDate, coordToId[from]));
               });
+            });
 
-              // Nobles
+            // --- NOBLES hedefleri ---
+            targetsNoble.forEach(function(target){
               var takeNb = Math.max(0, Math.min(noblesPerTarget, noblesPool.length));
               var useNobles = noblesPool.splice(0, takeNb);
               useNobles.forEach(function(from){
-                allPlans.push(makePlan(from, target, 'snob', 'noble', arrivalDate, coordToId[from]));
+                globalPlans.push(makePlan(from, target, 'snob', 'noble', arrivalDate, coordToId[from]));
               });
+            });
 
-              // Support
+            // --- SUPPORT hedefleri ---
+            targetsSupport.forEach(function(target){
               var takeS = Math.max(0, Math.min(supportPerTarget, supportPool.length));
               var useSupport = supportPool.splice(0, takeS);
               useSupport.forEach(function(from){
-                allPlans.push(makePlan(from, target, supportUnit, 'support', arrivalDate, coordToId[from]));
+                globalPlans.push(makePlan(from, target, supportUnit, 'support', arrivalDate, coordToId[from]));
               });
-
-              // Kalkışa göre sırala
-              allPlans.sort(function(a,b){
-                return parseDT(a.launchTimeFormattedPad) - parseDT(b.launchTimeFormattedPad);
-              });
-
-              var nukesPlans   = allPlans.filter(function(p){ return p.category === 'nuke';   }).map(stripPadForOutput);
-              var noblesPlans  = allPlans.filter(function(p){ return p.category === 'noble';  }).map(stripPadForOutput);
-              var supportPlans = allPlans.filter(function(p){ return p.category === 'support';}).map(stripPadForOutput);
-
-              if (nukesPlans.length)   fullBB += getBBCodePlans_TR(nukesPlans,  target, arrivalStr, 'kami')   + '\n\n';
-              if (noblesPlans.length)  fullBB += getBBCodePlans_TR(noblesPlans, target, arrivalStr, 'mis')    + '\n\n';
-              if (supportPlans.length) fullBB += getBBCodePlans_TR(supportPlans,target, arrivalStr, 'destek') + '\n\n';
             });
 
+            // Kalkış zamanına göre (ASC) tek liste
+            globalPlans.sort(function(a,b){
+              return parseDT(a.launchTimeFormattedPad) - parseDT(b.launchTimeFormattedPad);
+            });
+
+            var fullBB = plansToFlatBBCode(globalPlans);
             attackPlannerWindow.document.getElementById('resultsBBCode').value = fullBB.trim();
           }).catch(function(){
-            // Eşleşme yoksa villageId boş; linkler yine çalışır (mevcut köye gider)
-            var fullBB = '';
-            var nukesPool   = nukesAll.slice();
-            var noblesPool  = noblesAll.slice();
-            var supportPool = supAll.slice();
+            // ID eşleşmesi yoksa villageId boş
+            var globalPlans = [];
 
-            targets.forEach(function(target){
-              var allPlans = [];
-
+            targetsNuke.forEach(function(target){
               var useNukes = nukesPool.splice(0, Math.max(0, Math.min(nukesPerTarget, nukesPool.length)));
-              useNukes.forEach(function(from){ allPlans.push(makePlan(from, target, nukeUnit, 'nuke', arrivalDate, null)); });
-
+              useNukes.forEach(function(from){ globalPlans.push(makePlan(from, target, nukeUnit, 'nuke', arrivalDate, null)); });
+            });
+            targetsNoble.forEach(function(target){
               var useNobles = noblesPool.splice(0, Math.max(0, Math.min(noblesPerTarget, noblesPool.length)));
-              useNobles.forEach(function(from){ allPlans.push(makePlan(from, target, 'snob', 'noble', arrivalDate, null)); });
-
+              useNobles.forEach(function(from){ globalPlans.push(makePlan(from, target, 'snob', 'noble', arrivalDate, null)); });
+            });
+            targetsSupport.forEach(function(target){
               var useSupport = supportPool.splice(0, Math.max(0, Math.min(supportPerTarget, supportPool.length)));
-              useSupport.forEach(function(from){ allPlans.push(makePlan(from, target, supportUnit, 'support', arrivalDate, null)); });
-
-              allPlans.sort(function(a,b){ return parseDT(a.launchTimeFormattedPad) - parseDT(b.launchTimeFormattedPad); });
-
-              var nukesPlans   = allPlans.filter(function(p){return p.category==='nuke';}).map(stripPadForOutput);
-              var noblesPlans  = allPlans.filter(function(p){return p.category==='noble';}).map(stripPadForOutput);
-              var supportPlans = allPlans.filter(function(p){return p.category==='support';}).map(stripPadForOutput);
-
-              if (nukesPlans.length)   fullBB += getBBCodePlans_TR(nukesPlans,  target, arrivalStr, 'kami')   + '\n\n';
-              if (noblesPlans.length)  fullBB += getBBCodePlans_TR(noblesPlans, target, arrivalStr, 'mis')    + '\n\n';
-              if (supportPlans.length) fullBB += getBBCodePlans_TR(supportPlans,target, arrivalStr, 'destek') + '\n\n';
+              useSupport.forEach(function(from){ globalPlans.push(makePlan(from, target, supportUnit, 'support', arrivalDate, null)); });
             });
 
+            globalPlans.sort(function(a,b){ return parseDT(a.launchTimeFormattedPad) - parseDT(b.launchTimeFormattedPad); });
+            var fullBB = plansToFlatBBCode(globalPlans);
             attackPlannerWindow.document.getElementById('resultsBBCode').value = fullBB.trim();
           });
 
@@ -388,17 +389,7 @@
     }
   }
 
-  // Çıkışta pad'siz tarih kullan
-  function stripPadForOutput(p){
-    return {
-      unit: p.unit,
-      highPrio: p.highPrio,
-      coords: p.coords,
-      villageId: p.villageId,
-      launchTimeFormatted: p.launchTimeFormatted // unpadded
-    };
-  }
-
+  // Plan objesi (destination ekli)
   function makePlan(from, target, unit, category, arrivalDate, villageId){
     var dist = distance(from, target);
     var launch = launchTime(unit, arrivalDate, dist);
@@ -407,9 +398,10 @@
       category: category,           // 'nuke' | 'noble' | 'support'
       highPrio: false,
       coords: from,
+      destination: target,
       villageId: villageId || '',
-      launchTimeFormatted: fmtUnpadded(launch),      // örnekle aynı (3/10/2025 ...)
-      launchTimeFormattedPad: padDateTime(launch)    // sıralama için
+      launchTimeFormatted: fmtUnpadded(launch),
+      launchTimeFormattedPad: padDateTime(launch)
     };
   }
 
@@ -436,7 +428,6 @@
   }
 
   (function bootstrap(){
-    // Cache kullan
     try{
       var last = parseInt(localStorage.getItem(`${LS_PREFIX}_last_update`) || '0', 10);
       if (last && nowMs() < (last + TIME_INTERVAL)) {
