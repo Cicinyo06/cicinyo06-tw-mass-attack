@@ -1,4 +1,4 @@
-(function MAP_Popup_Standalone_Vanilla_Fixed(){
+(function MAP_Popup_Standalone_Vanilla_Fixed_NoParen(){
   'use strict';
 
   // --- Oyunun origin'ini (https://trXX.tribalwars.com.tr gibi) popup'a taşımak için yakala
@@ -186,7 +186,9 @@
           if(!isFinite(xi)||!isFinite(yi)||xi<0||xi>999||yi<0||yi>999) return null;
           return xi+'\\n'+yi;
         }
-        function dispCoord(c){ var s=String(c).split('\\n'); return '('+s[0]+'|'+s[1]+')'; }
+        // *** Parantezsiz çıktı ***
+        function dispCoord(c){ var s=String(c).split('\\n'); return s[0]+'|'+s[1]; }
+
         function parseCoords(text, strict){
           var base = strict ? RE_STRICT : RE_FLEX;
           var re = new RegExp(base.source, 'g');
