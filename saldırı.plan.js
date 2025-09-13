@@ -32,7 +32,7 @@
 
   var bodyHTML = [
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">',
-    '  <div><b>Mass Attack Planner</b> <span class="muted">v1.1.8-standalone-fixed</span></div>',
+    '  <div><b>Toplu Saldırı Planlayıcı</b> <span class="muted">v1.1.8-standalone-fixed</span></div>',
     '  <div style="font-size:12px" class="muted">Popup içi • jQuery yok • localStorage yok</div>',
     '</div>',
     '<fieldset>',
@@ -41,10 +41,10 @@
     '  <input id="arrivalTime" type="text" placeholder="06/10/2025 23:59:59"/>',
     '</fieldset>',
     '<fieldset>',
-    '  <legend>Slowest Units</legend>',
+    '  <legend>En Yavaş Birimler</legend>',
     '  <div class="grid2">',
     '    <div>',
-    '      <label>Slowest Nuke unit</label>',
+    '      <label>En Yavaş Kamiler birimi</label>',
     '      <select id="slowestNukeUnit">',
     '        <option value="axe">axe</option>',
     '        <option value="light">light</option>',
@@ -55,7 +55,7 @@
     '      </select>',
     '    </div>',
     '    <div>',
-    '      <label>Slowest Support unit</label>',
+    '      <label>En Yavaş Destek birimi</label>',
     '      <select id="slowestSupportUnit">',
     '        <option value="spear" selected>spear</option>',
     '        <option value="archer">archer</option>',
@@ -71,9 +71,9 @@
     '<fieldset>',
     '  <legend>Maks. Yolculuk Süresi (saat) — boş bırak = sınırsız</legend>',
     '  <div class="grid3">',
-    '    <div><label>Nuke max</label><input id="maxHoursNuke" type="text"/></div>',
-    '    <div><label>Noble max</label><input id="maxHoursNoble" type="text"/></div>',
-    '    <div><label>Support max</label><input id="maxHoursSupport" type="text"/></div>',
+    '    <div><label>Kamiler maks</label><input id="maxHoursNuke" type="text"/></div>',
+    '    <div><label>Misyoner maks</label><input id="maxHoursNoble" type="text"/></div>',
+    '    <div><label>Destek maks</label><input id="maxHoursSupport" type="text"/></div>',
     '  </div>',
     '</fieldset>',
     '<fieldset>',
@@ -82,23 +82,23 @@
     '  <small>Kapalıyken boşluk, x, , / - . ve satır sonu gibi ayraçlar da kabul edilir.</small>',
     '</fieldset>',
     '<div class="grid2">',
-    '  <div><label>Targets <span id="cntTargets" class="muted"></span></label><textarea id="targetsCoords"></textarea></div>',
-    '  <div><label>Nukes Coords <span id="cntNukes" class="muted"></span></label><textarea id="nukesCoords"></textarea></div>',
+    '  <div><label>Hedefler <span id="cntHedefler" class="muted"></span></label><textarea id="targetsCoords"></textarea></div>',
+    '  <div><label>Kamiler Koordinatları <span id="cntNukes" class="muted"></span></label><textarea id="nukesCoords"></textarea></div>',
     '</div>',
     '<div class="grid2">',
-    '  <div><label>Nobles Coords <span id="cntNobles" class="muted"></span></label><textarea id="noblesCoords"></textarea></div>',
-    '  <div><label>Support Coords <span id="cntSupport" class="muted"></span></label><textarea id="supportCoords"></textarea></div>',
+    '  <div><label>Misyoner Koordinatları <span id="cntNobles" class="muted"></span></label><textarea id="noblesCoords"></textarea></div>',
+    '  <div><label>Destek Koordinatları <span id="cntSupport" class="muted"></span></label><textarea id="supportCoords"></textarea></div>',
     '</div>',
     '<fieldset>',
-    '  <legend>Per Target (her hedefe kaç tane?)</legend>',
+    '  <legend>Hedef Başı (her hedefe kaç adet?)</legend>',
     '  <div class="grid3">',
-    '    <div><label>Nukes per Target</label><input id="nukesPerTarget" type="text" value="1"/></div>',
-    '    <div><label>Nobles per Target</label><input id="noblesPerTarget" type="text" value="1"/></div>',
-    '    <div><label>Support per Target</label><input id="supportPerTarget" type="text" value="0"/></div>',
+    '    <div><label>Hedef başı Kamiler</label><input id="nukesPerTarget" type="text" value="1"/></div>',
+    '    <div><label>Hedef başı Misyoner</label><input id="noblesPerTarget" type="text" value="1"/></div>',
+    '    <div><label>Hedef başı Destek</label><input id="supportPerTarget" type="text" value="0"/></div>',
     '  </div>',
     '</fieldset>',
     '<div class="toolbar">',
-    '  <button id="getPlanBtn" type="button" disabled>Get Plan!</button>',
+    '  <button id="getPlanBtn" type="button" disabled>Planı Oluştur!</button>',
     '  <button id="copyBtn" type="button">Kopyala</button>',
     '  <button id="clearBtn" type="button">Temizle</button>',
     '  <button id="sampleBtn" type="button">Örnek Doldur</button>',
@@ -106,7 +106,7 @@
     '  <span id="statusText" class="muted"></span>',
     '</div>',
     '<fieldset>',
-    '  <legend>Results (TR BBCode, düz satır)</legend>',
+    '  <legend>Sonuçlar (TR BBCode, düz satır)</legend>',
     '  <textarea id="resultsBBCode" style="height:260px;"></textarea>',
     '</fieldset>',
     '<small class="muted">Not: Girdiler tarayıcıya <b>kaydedilmez</b>. Bağlantılar oyun alan adına göre üretilir.</small>'
@@ -114,7 +114,7 @@
 
   var doc = win.document;
   doc.open();
-  doc.write('<!doctype html><html><head><meta charset="utf-8"><title>Mass Attack Planner</title>' + css + '</head><body><div id="app"></div></body></html>');
+  doc.write('<!doctype html><html><head><meta charset="utf-8"><title>Toplu Saldırı Planlayıcı</title>' + css + '</head><body><div id="app"></div></body></html>');
   doc.close();
 
   function ready(fn){
@@ -273,10 +273,10 @@
             var xml = await res.text();
             unitInfo = xmlTextToJson(xml);
             if(!getUnitSpeed('ram')) throw new Error('Birim hızları beklenen formatta değil');
-            if(btn){ btn.disabled=false; btn.textContent='Get Plan!'; }
+            if(btn){ btn.disabled=false; btn.textContent='Planı Oluştur!'; }
           }catch(e){
             alert('Birim bilgisi alınamadı: '+(e&&e.message?e.message:e)+'\\nYine de butonu deneyebilirsiniz; hız yoksa hesap yapılamaz.');
-            if(btn){ btn.disabled=false; btn.textContent='Get Plan!'; }
+            if(btn){ btn.disabled=false; btn.textContent='Planı Oluştur!'; }
           }
         }
 
@@ -335,7 +335,7 @@
         function $(id){ return document.getElementById(id); }
         function refreshCounters(){
           var strict=$('strictMode').checked;
-          $('cntTargets').textContent='('+parseCoords($('targetsCoords').value||'',strict).length+')';
+          $('cntHedefler').textContent='('+parseCoords($('targetsCoords').value||'',strict).length+')';
           $('cntNukes').textContent='('+parseCoords($('nukesCoords').value||'',strict).length+')';
           $('cntNobles').textContent='('+parseCoords($('noblesCoords').value||'',strict).length+')';
           $('cntSupport').textContent='('+parseCoords($('supportCoords').value||'',strict).length+')';
@@ -390,7 +390,7 @@
           $('getPlanBtn').addEventListener('click', async function(ev){
             ev.preventDefault();
             var btn=$('getPlanBtn'); if(btn.disabled) return;
-            btn.disabled=true; btn.textContent='Working...';
+            btn.disabled=true; btn.textContent='Hazırlanıyor...';
             try{
               var aStr=String($('arrivalTime').value||'').trim();
               if(!aStr){ alert('İniş zamanı boş.'); return; }
@@ -403,7 +403,7 @@
               var nukesAll=parseCoords($('nukesCoords').value||'',strict);
               var noblesAll=parseCoords($('noblesCoords').value||'',strict);
               var supAll=parseCoords($('supportCoords').value||'',strict);
-              if(!targets.length){ alert('Targets içinde koordinat bulunamadı.'); return; }
+              if(!targets.length){ alert('Hedefler içinde koordinat bulunamadı.'); return; }
 
               var npt=Math.max(0,toInt($('nukesPerTarget').value,0));
               var nbpt=Math.max(0,toInt($('noblesPerTarget').value,0));
@@ -461,7 +461,7 @@
               alert('Plan üretimi sırasında hata: '+(err&&err.message?err.message:err));
               if (DEBUG) console.error(err);
             }finally{
-              btn.disabled=false; btn.textContent='Get Plan!';
+              btn.disabled=false; btn.textContent='Planı Oluştur!';
             }
           });
 
