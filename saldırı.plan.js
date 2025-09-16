@@ -317,7 +317,15 @@
             distance: dist
           };
         }
-        function plansToFlatBBCode(plans){
+        function colorForCategory(cat){
+  switch (cat) {
+    case 'nuke':    return '#ff0000'; // Kami: kırmızı
+    case 'noble':   return '#00aa00'; // Misyoner: yeşil
+    case 'support': return '#0077ff'; // Destek: mavi
+    default:        return '#ff0000';
+  }
+}
+function plansToFlatBBCode(plans){
           var origin = GAME_ORIGIN || '';
           var lines=[];
           for (var i=0;i<plans.length;i++){
@@ -326,7 +334,7 @@
             var params = { screen:'place', x:to[0], y:to[1] };
             if (p.villageId) params.village = String(p.villageId);
             var url = '/game.php?'+QS(params);
-            lines.push('[unit]'+p.unit+'[/unit] '+dispCoord(p.coords)+' -> '+dispCoord(p.destination)+' - [color=#ff0000]'+p.launchTimeFormatted+'[/color] - [url='+origin+url+']Gönder[/url]');
+            lines.push('[unit]'+p.unit+'[/unit] '+dispCoord(p.coords)+' -> '+dispCoord(p.destination)+' - [color=' + colorForCategory(p.category) + ']'+p.launchTimeFormatted+'[/color] - [url='+origin+url+']Gönder[/url]');
           }
           return lines.join('\\n');
         }
